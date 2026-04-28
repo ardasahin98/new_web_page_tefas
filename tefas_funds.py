@@ -69,12 +69,16 @@ for fond_name in fonds:
 
         tree = html.fromstring(response.content)
 
-        element = tree.xpath(
+        elements = tree.xpath(
             "//p[contains(@class, 'font-bold') and contains(@class, 'text-primary-blue')]"
         )
 
-        if element:
-            price = element[0].text_content().strip()
+        for el in elements:
+            text = el.text_content().strip()
+
+            if "," in text and any(char.isdigit() for char in text):
+                price = text
+                break
 
     except requests.exceptions.RequestException as e:
         print(f"{fond_name}: request failed ({e})")
