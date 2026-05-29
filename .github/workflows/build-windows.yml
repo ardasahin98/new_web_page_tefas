@@ -1,4 +1,4 @@
-name: Build Windows EXE (Requests)
+name: Build Windows and Mac Apps
 
 on:
   workflow_dispatch:
@@ -6,15 +6,13 @@ on:
     branches: [ main ]
 
 jobs:
-  build:
+  build-windows:
     runs-on: windows-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
+      - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
 
@@ -23,12 +21,37 @@ jobs:
           python -m pip install --upgrade pip
           pip install requests lxml openpyxl pyinstaller
 
-      - name: Build EXE with PyInstaller
+      - name: Build Windows EXE
         run: |
           pyinstaller --onefile tefas_funds.py
 
-      - name: Upload EXE artifact
+      - name: Upload Windows EXE
         uses: actions/upload-artifact@v4
         with:
-          name: tefas_funds_requests_exe
+          name: tefas_funds_windows_exe
           path: dist/tefas_funds.exe
+
+  build-mac:
+    runs-on: macos-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install requests lxml openpyxl pyinstaller
+
+      - name: Build Mac executable
+        run: |
+          pyinstaller --onefile tefas_funds.py
+
+      - name: Upload Mac executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: tefas_funds_mac
+          path: dist/tefas_funds
