@@ -1,14 +1,17 @@
-import requests
 import time
 import os
 import sys
-import re
-from lxml import html
 import openpyxl
+
+from selenium import webdriver
+from selenium.webdriver.common.by import By
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
 DEFAULT_TXT_FILE = "funds.txt"
 
-# ------------------ PATHS ------------------
+PRICE_XPATH = "/html/body/main/div[3]/div[2]/div[2]/div[1]/div[3]/div[2]/div[1]/div[2]/p"
 
 if getattr(sys, "frozen", False):
     base_dir = os.path.dirname(sys.executable)
@@ -18,45 +21,26 @@ else:
 txt_file_path = os.path.join(base_dir, DEFAULT_TXT_FILE)
 file_path = os.path.join(base_dir, "tefas_funds.xlsx")
 
-# ------------------ READ FUNDS FROM TXT ONLY ------------------
-
 try:
     with open(txt_file_path, "r", encoding="utf-8") as f:
-        fonds = [
-            line.strip().upper()
-            for line in f
-            if line.strip()
-        ]
+        fonds = [line.strip().upper() for line in f if line.strip()]
 except Exception as e:
     print(f"Failed to read {txt_file_path}: {e}")
     sys.exit(1)
 
 print(f"\nFunds to be processed: {fonds}\n")
 
-# ------------------ EXCEL SETUP ------------------
-
 wb = openpyxl.Workbook()
 ws = wb.active
 ws.title = "Funds"
 ws.append(["Fund", "Price"])
 
-# ------------------ HEADERS ------------------
+options = Options()
+options.add_argument("--headless=new")
+options.add_argument("--window-size=1400,1000")
 
-headers = {
-    "User-Agent": (
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
-        "AppleWebKit/537.36 (KHTML, like Gecko) "
-        "Chrome/120.0.0.0 Safari/537.36"
-    ),
-    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-    "Accept-Language": "tr-TR,tr;q=0.9,en-US;q=0.8,en;q=0.7",
-    "Referer": "https://www.tefas.gov.tr/",
-    "Connection": "keep-alive",
-}
-
-session = requests.Session()
-
-# ------------------ MAIN LOOP ------------------
+driver = webdriver.Chrome(options=options)
+wait = WebDriverWait(driver, 30)
 
 for fond_name in fonds:
     price = ""
@@ -64,65 +48,29 @@ for fond_name in fonds:
     url = f"https://www.tefas.gov.tr/tr/fon-detayli-analiz/{fond_name}"
 
     try:
-        response = session.get(url, headers=headers, timeout=20)
+        driver.get(url)
 
-        print(f"{fond_name}: status code = {response.status_code}")
-        print(f"{fond_name}: final url = {response.url}")
-
-        response.raise_for_status()
-
-        tree = html.fromstring(response.content)
-
-        # Your browser XPath
-        element = tree.xpath(
-            "/html/body/main/div[3]/div[2]/div[2]/div[1]/div[3]/div[2]/div[1]/div[2]/p"
+        element = wait.until(
+            EC.presence_of_element_located((By.XPATH, PRICE_XPATH))
         )
 
-        if element:
-            price = element[0].text_content().strip()
+        price = element.text.strip()
 
-        # Backup 1: search all visible text values that look like TEFAS price
-        if not price:
-            all_text = tree.xpath("//text()")
-            cleaned_text = [t.strip() for t in all_text if t.strip()]
+    except Exception as e:
+        print(f"{fond_name}: price not found ({e})")
 
-            for text in cleaned_text:
-                if re.fullmatch(r"\d+,\d{4,8}", text):
-                    price = text
-                    break
+        debug_path = os.path.join(base_dir, f"debug_{fond_name}.html")
+        with open(debug_path, "w", encoding="utf-8") as f:
+            f.write(driver.page_source)
 
-        # Backup 2: search raw HTML
-        if not price:
-            matches = re.findall(r">\s*(\d+,\d{4,8})\s*<", response.text)
-
-            if matches:
-                price = matches[0]
-
-        # Backup 3: broader raw HTML search
-        if not price:
-            matches = re.findall(r"\b\d+,\d{4,8}\b", response.text)
-
-            if matches:
-                price = matches[0]
-
-        if not price:
-            debug_path = os.path.join(base_dir, f"debug_{fond_name}.html")
-
-            with open(debug_path, "w", encoding="utf-8") as f:
-                f.write(response.text)
-
-            print(f"{fond_name}: price not found. Saved debug file: {debug_path}")
-
-    except requests.exceptions.RequestException as e:
-        print(f"{fond_name}: request failed ({e})")
+        print(f"{fond_name}: saved debug file: {debug_path}")
 
     ws.append([fond_name, price])
     print(f"{fond_name}: {price}")
 
     time.sleep(1)
 
-# ------------------ SAVE ------------------
-
+driver.quit()
 wb.save(file_path)
 
 print(f"\nExcel file created:\n{file_path}")
