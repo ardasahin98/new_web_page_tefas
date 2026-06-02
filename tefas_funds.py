@@ -18,7 +18,7 @@ else:
 txt_file_path = os.path.join(base_dir, DEFAULT_TXT_FILE)
 file_path = os.path.join(base_dir, "tefas_funds.xlsx")
 
-# ------------------ READ FUNDS ------------------
+# ------------------ READ FUNDS FROM TXT ONLY ------------------
 
 try:
     with open(txt_file_path, "r", encoding="utf-8") as f:
@@ -73,7 +73,7 @@ for fond_name in fonds:
 
         tree = html.fromstring(response.content)
 
-        # New TEFAS page XPath
+        # Your browser XPath
         element = tree.xpath(
             "/html/body/main/div[3]/div[2]/div[2]/div[1]/div[3]/div[2]/div[1]/div[2]/p"
         )
@@ -81,26 +81,33 @@ for fond_name in fonds:
         if element:
             price = element[0].text_content().strip()
 
-        # Backup method
+        # Backup 1: search all visible text values that look like TEFAS price
         if not price:
-            elements = tree.xpath(
-                "//p[contains(@class, 'font-bold') or contains(@class, 'text-primary-blue')]"
-            )
+            all_text = tree.xpath("//text()")
+            cleaned_text = [t.strip() for t in all_text if t.strip()]
 
-            for el in elements:
-                text = el.text_content().strip()
-                if re.fullmatch(r"\d+,\d+", text):
+            for text in cleaned_text:
+                if re.fullmatch(r"\d+,\d{4,8}", text):
                     price = text
                     break
 
-        # Final backup regex
+        # Backup 2: search raw HTML
         if not price:
-            matches = re.findall(r"\d+,\d{4,}", response.text)
+            matches = re.findall(r">\s*(\d+,\d{4,8})\s*<", response.text)
+
+            if matches:
+                price = matches[0]
+
+        # Backup 3: broader raw HTML search
+        if not price:
+            matches = re.findall(r"\b\d+,\d{4,8}\b", response.text)
+
             if matches:
                 price = matches[0]
 
         if not price:
             debug_path = os.path.join(base_dir, f"debug_{fond_name}.html")
+
             with open(debug_path, "w", encoding="utf-8") as f:
                 f.write(response.text)
 
